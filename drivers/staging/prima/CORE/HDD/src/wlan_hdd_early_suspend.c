@@ -510,12 +510,13 @@ int wlan_hdd_ipv6_changed(struct notifier_block *nb,
 {
     struct inet6_ifaddr *ifa = (struct inet6_ifaddr *)arg;
     struct net_device *ndev = ifa->idev->dev;
-    hdd_adapter_t *pAdapter =
-             container_of(nb, struct hdd_adapter_s, ipv6_notifier);
+    hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(ndev);
     hdd_context_t *pHddCtx;
     int status;
 
-    if (pAdapter && pAdapter->dev == ndev)
+    if (pAdapter && pAdapter->dev == ndev &&
+          (pAdapter->device_mode == WLAN_HDD_INFRA_STATION ||
+           pAdapter->device_mode == WLAN_HDD_P2P_CLIENT))
     {
         pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
         status = wlan_hdd_validate_context(pHddCtx);
@@ -968,11 +969,13 @@ int wlan_hdd_ipv4_changed(struct notifier_block *nb,
     struct in_device *in_dev;
 
     struct net_device *ndev = ifa->ifa_dev->dev;
-    hdd_adapter_t *pAdapter =
-             container_of(nb, struct hdd_adapter_s, ipv4_notifier);
+    hdd_adapter_t *pAdapter = WLAN_HDD_GET_PRIV_PTR(ndev);
     hdd_context_t *pHddCtx;
     int status;
-    if (pAdapter && pAdapter->dev == ndev)
+
+    if (pAdapter && pAdapter->dev == ndev &&
+         (pAdapter->device_mode == WLAN_HDD_INFRA_STATION ||
+          pAdapter->device_mode == WLAN_HDD_P2P_CLIENT))
     {
        pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
        status = wlan_hdd_validate_context(pHddCtx);
@@ -1352,6 +1355,13 @@ void hdd_suspend_wlan(void)
       return;
    }
 
+   if (pHddCtx->hdd_wlan_suspended)
+   {
+      hddLog(VOS_TRACE_LEVEL_ERROR,
+             "%s: Ignore suspend wlan, Already suspended!", __func__);
+      return;
+   }
+
    pHddCtx->hdd_wlan_suspended = TRUE;
    hdd_set_pwrparams(pHddCtx);
    status =  hdd_get_front_adapter ( pHddCtx, &pAdapterNode );
@@ -1642,6 +1652,13 @@ void hdd_resume_wlan(void)
    {
       hddLog(VOS_TRACE_LEVEL_INFO,
              "%s: Ignore resume wlan, LOGP in progress!", __func__);
+      return;
+   }
+
+   if (!pHddCtx->hdd_wlan_suspended)
+   {
+      hddLog(VOS_TRACE_LEVEL_ERROR,
+             "%s: Ignore resume wlan, Already resumed!", __func__);
       return;
    }
 
@@ -1985,6 +2002,9 @@ VOS_STATUS hdd_wlan_re_init(void)
 #ifdef HAVE_WCNSS_CAL_DOWNLOAD
    int              max_retries = 0;
 #endif
+#ifdef HAVE_CBC_DONE
+   int              max_cbc_retries = 0;
+#endif
 #ifdef WLAN_BTAMP_FEATURE
    hdd_config_t     *pConfig = NULL;
    WLANBAP_ConfigType btAmpConfig;
@@ -2002,6 +2022,15 @@ VOS_STATUS hdd_wlan_re_init(void)
    if (max_retries >= 10) {
       hddLog(VOS_TRACE_LEVEL_FATAL,"%s: WCNSS driver not ready", __func__);
       goto err_re_init;
+   }
+#endif
+
+#ifdef HAVE_CBC_DONE
+   while (!wcnss_cbc_complete() && 20 >= ++max_cbc_retries) {
+       msleep(1000);
+   }
+   if (max_cbc_retries >= 20) {
+      hddLog(VOS_TRACE_LEVEL_FATAL, "%s:CBC not completed", __func__);
    }
 #endif
 
@@ -2193,8 +2222,6 @@ err_vosclose:
        /* If we hit this, it means wlan driver is in bad state and needs
        * driver unload and load.
        */
-       if (pHddCtx)
-           pHddCtx->isLogpInProgress = FALSE;
        vos_set_reinit_in_progress(VOS_MODULE_ID_VOSS, FALSE);
        return VOS_STATUS_E_FAILURE;
    }

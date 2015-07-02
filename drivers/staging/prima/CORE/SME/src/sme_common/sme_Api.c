@@ -76,7 +76,6 @@
 #include "sapApi.h"
 #include "macTrace.h"
 
-
 #ifdef DEBUG_ROAM_DELAY
 #include "vos_utils.h"
 #endif
@@ -465,6 +464,11 @@ tSmeCmd *smeGetCommandBuffer( tpAniSirGlobal pMac )
 
 void smePushCommand( tpAniSirGlobal pMac, tSmeCmd *pCmd, tANI_BOOLEAN fHighPriority )
 {
+    if (!SME_IS_START(pMac))
+    {
+       smsLog( pMac, LOGE, FL("Sme in stop state"));
+       return;
+    }
     if ( fHighPriority )
     {
         csrLLInsertHead( &pMac->sme.smeCmdPendingList, &pCmd->Link, LL_ACCESS_LOCK );
@@ -11683,4 +11687,20 @@ eHalStatus sme_RegisterBtCoexTDLSCallback
         sme_ReleaseGlobalLock(&pMac->sme);
     }
     return(status);
+}
+
+/* ---------------------------------------------------------------------------
+
+    \fn smeNeighborRoamIsHandoffInProgress
+
+    \brief  This function is a wrapper to call csrNeighborRoamIsHandoffInProgress
+
+    \param hHal - The handle returned by macOpen.
+
+    \return eANI_BOOLEAN_TRUE if reassoc in progress, eANI_BOOLEAN_FALSE otherwise
+
+---------------------------------------------------------------------------*/
+tANI_BOOLEAN smeNeighborRoamIsHandoffInProgress(tHalHandle hHal)
+{
+    return (csrNeighborRoamIsHandoffInProgress(PMAC_STRUCT(hHal)));
 }
