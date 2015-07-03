@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  * Copyright (C) 2015 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -1749,6 +1749,7 @@ int mdss_dsi_panel_init(struct device_node *node,
 
 	pinfo->dynamic_switch_pending = false;
 	pinfo->is_lpm_mode = false;
+	pinfo->esd_rdy = false;
 
 	ctrl_pdata->on = mdss_dsi_panel_on;
 	ctrl_pdata->off = mdss_dsi_panel_off;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -516,8 +516,8 @@ static void change_inst_state(struct msm_vidc_inst *inst,
 	mutex_lock(&inst->lock);
 	if (inst->state == MSM_VIDC_CORE_INVALID) {
 		dprintk(VIDC_DBG,
-			"Inst: %p is in bad state can't change state\n",
-			inst);
+			"Inst: %p is in bad state can't change state to %d\n",
+			inst, state);
 		goto exit;
 	}
 	dprintk(VIDC_DBG, "Moved inst: %p from state: %d to state: %d\n",
@@ -1034,7 +1034,6 @@ exit:
 static void handle_session_error(enum command_response cmd, void *data)
 {
 	struct msm_vidc_cb_cmd_done *response = data;
-	int rc;
 	struct hfi_device *hdev = NULL;
 	struct msm_vidc_inst *inst = NULL;
 
@@ -1057,15 +1056,6 @@ static void handle_session_error(enum command_response cmd, void *data)
 	dprintk(VIDC_WARN, "Session error received for session %p\n", inst);
 	change_inst_state(inst, MSM_VIDC_CORE_INVALID);
 
-	mutex_lock(&inst->lock);
-	dprintk(VIDC_DBG, "cleaning up inst: %p\n", inst);
-	rc = call_hfi_op(hdev, session_clean, inst->session);
-	if (rc)
-		dprintk(VIDC_ERR, "Session (%p) clean failed: %d\n", inst, rc);
-
-	inst->session = NULL;
-	mutex_unlock(&inst->lock);
-
 	if (response->status == VIDC_ERR_MAX_CLIENTS) {
 		dprintk(VIDC_WARN,
 			"send max clients reached error to client: %p\n",
@@ -1083,10 +1073,8 @@ static void handle_session_error(enum command_response cmd, void *data)
 
 static void msm_comm_clean_notify_client(struct msm_vidc_core *core)
 {
-	int rc = 0;
 	struct msm_vidc_inst *inst = NULL;
-	struct hfi_device *hdev = NULL;
-	if (!core || !core->device) {
+	if (!core) {
 		dprintk(VIDC_ERR, "%s: Invalid params\n", __func__);
 		return;
 	}
@@ -1098,17 +1086,6 @@ static void msm_comm_clean_notify_client(struct msm_vidc_core *core)
 	list_for_each_entry(inst, &core->instances, list) {
 		mutex_lock(&inst->lock);
 		inst->state = MSM_VIDC_CORE_INVALID;
-		hdev = inst->core->device;
-		if (hdev && inst->session) {
-			dprintk(VIDC_DBG,
-				"cleaning up inst: 0x%p\n", inst);
-			rc = call_hfi_op(hdev, session_clean,
-					(void *) inst->session);
-			if (rc)
-				dprintk(VIDC_ERR,
-					"Sess clean failed :%p\n", inst);
-		}
-		inst->session = NULL;
 		mutex_unlock(&inst->lock);
 		dprintk(VIDC_WARN,
 			"%s Send sys error for inst %p\n", __func__, inst);
@@ -1208,11 +1185,35 @@ static void handle_sys_error(enum command_response cmd, void *data)
 	schedule_delayed_work(&handler->work, msecs_to_jiffies(5000));
 }
 
+void msm_comm_session_clean(struct msm_vidc_inst *inst)
+{
+	int rc = 0;
+	struct hfi_device *hdev = NULL;
+
+	if (!inst || !inst->core || !inst->core->device) {
+		dprintk(VIDC_ERR, "%s invalid params\n", __func__);
+		return;
+	}
+
+	hdev = inst->core->device;
+	mutex_lock(&inst->lock);
+	if (hdev && inst->session) {
+		dprintk(VIDC_DBG, "cleaning up instance: 0x%p\n", inst);
+		rc = call_hfi_op(hdev, session_clean,
+				(void *) inst->session);
+		if (rc) {
+			dprintk(VIDC_ERR,
+				"Session clean failed :%p\n", inst);
+		}
+		inst->session = NULL;
+	}
+	mutex_unlock(&inst->lock);
+}
+
 static void handle_session_close(enum command_response cmd, void *data)
 {
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst;
-	struct hfi_device *hdev = NULL;
 
 	if (response) {
 		inst = (struct msm_vidc_inst *)response->session_id;
@@ -1220,15 +1221,6 @@ static void handle_session_close(enum command_response cmd, void *data)
 			dprintk(VIDC_ERR, "%s invalid params\n", __func__);
 			return;
 		}
-		hdev = inst->core->device;
-		mutex_lock(&inst->lock);
-		if (inst->session) {
-			dprintk(VIDC_DBG, "cleaning up inst: 0x%p\n", inst);
-			call_hfi_op(hdev, session_clean,
-				(void *) inst->session);
-		}
-		inst->session = NULL;
-		mutex_unlock(&inst->lock);
 		signal_session_msg_receipt(cmd, inst);
 		show_stats(inst);
 	} else {
@@ -2419,6 +2411,7 @@ core_already_uninited:
 
 int msm_comm_force_cleanup(struct msm_vidc_inst *inst)
 {
+	msm_comm_kill_session(inst);
 	return msm_vidc_deinit_core(inst);
 }
 
@@ -2460,6 +2453,7 @@ static int msm_comm_session_init(int flipped_state,
 			"Failed to call session init for: %p, %p, %d, %d\n",
 			inst->core->device, inst,
 			inst->session_type, fourcc);
+		rc = -EINVAL;
 		goto exit;
 	}
 	change_inst_state(inst, MSM_VIDC_OPEN);
@@ -4510,6 +4504,7 @@ int msm_vidc_check_session_supported(struct msm_vidc_inst *inst)
 	rc = msm_vidc_load_supported(inst);
 	if (rc) {
 		change_inst_state(inst, MSM_VIDC_CORE_INVALID);
+		msm_comm_kill_session(inst);
 		dprintk(VIDC_WARN,
 			"%s: Hardware is overloaded\n", __func__);
 		return rc;
@@ -4555,6 +4550,7 @@ int msm_vidc_check_session_supported(struct msm_vidc_inst *inst)
 	}
 	if (rc) {
 		change_inst_state(inst, MSM_VIDC_CORE_INVALID);
+		msm_comm_kill_session(inst);
 		dprintk(VIDC_ERR,
 			"%s: Resolution unsupported\n", __func__);
 	}
@@ -4609,8 +4605,9 @@ int msm_comm_kill_session(struct msm_vidc_inst *inst)
 	 * the session send session_abort to firmware to clean up and release
 	 * the session, else just kill the session inside the driver.
 	 */
-	if (inst->state >= MSM_VIDC_OPEN_DONE &&
-			inst->state < MSM_VIDC_CLOSE_DONE) {
+	if ((inst->state >= MSM_VIDC_OPEN_DONE &&
+			inst->state < MSM_VIDC_CLOSE_DONE) ||
+			inst->state == MSM_VIDC_CORE_INVALID) {
 		rc = msm_comm_session_abort(inst);
 		if (rc == -EBUSY) {
 			msm_comm_generate_sys_error(inst);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2013-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -168,7 +168,8 @@
 
 	restart@4ab000 {
 		compatible = "qcom,pshold";
-		reg = <0x4ab000 0x4>;
+		reg = <0x4ab000 0x4>,
+		      <0x193d100 0x4>;
 	};
 
 	qcom,mpm2-sleep-counter@4a3000 {
@@ -300,13 +301,15 @@
 	qcom,clock-a7@0b011050 {
 		compatible = "qcom,clock-a53-8916";
 		reg = <0x0b011050 0x8>,
-		      <0x0005c004 0x8>;
-		reg-names = "rcg-base", "efuse1";
+		      <0x0005c004 0x8>,
+		      <0x0005c00c 0x8>;
+		reg-names = "rcg-base", "efuse1", "efuse";
 		qcom,safe-freq = < 400000000 >;
 		cpu-vdd-supply = <&apc_vreg_corner>;
 		clocks = <&clock_gcc clk_gpll0_ao_clk_src>,
 			 <&clock_gcc clk_a53sspll>;
 		clock-names = "clk-4", "clk-5";
+		#clock-cells = <1>;
 		qcom,speed0-bin-v0 =
 			<          0 0>,
 			<  200000000 1>,
@@ -327,6 +330,29 @@
 			<  998400000 5>,
 			< 1094400000 6>,
 			< 1152000000 7>;
+
+		qcom,speed0-bin-v1 =
+			<          0 0>,
+			<  200000000 1>,
+			<  400000000 2>,
+			<  533333000 3>,
+			<  800000000 4>,
+			<  998400000 5>,
+			< 1094400000 6>,
+			< 1152000000 7>,
+			< 1209600000 8>;
+
+		qcom,speed2-bin-v1 =
+			<          0 0>,
+			<  200000000 1>,
+			<  400000000 2>,
+			<  533333000 3>,
+			<  800000000 4>,
+			<  998400000 5>,
+			< 1094400000 6>,
+			< 1152000000 7>,
+			< 1209600000 8>,
+			< 1363200000 9>;
 	};
 
 	cpubw: qcom,cpubw {
@@ -370,7 +396,8 @@
 			 <  998400 >,
 			 < 1094400 >,
 			 < 1152000 >,
-			 < 1209600 >;
+			 < 1209600 >,
+			 < 1363200 >;
 	};
 
 	qcom,sps {
@@ -500,7 +527,7 @@
 		compatible = "qcom,android-usb";
 		reg = <0x086000c8 0xc8>;
 		qcom,pm-qos-latency = <2 1001 12701>;
-		qcom,streaming-func = "mtp";
+		qcom,streaming-func = "rndis","mtp";
 		qcom,android-usb-uicc-nluns = /bits/ 8 <1>;
 	};
 
@@ -1553,7 +1580,7 @@
 		qcom,scm_core_clk_src-freq = <80000000>;
 
 		qcom,pas-id = <9>;
-		qcom,proxy-timeout-ms = <5000>;
+		qcom,proxy-timeout-ms = <100>;
 		qcom,firmware-name = "venus";
 		linux,contiguous-region = <&venus_qseecom_mem>;
 	};
@@ -1779,6 +1806,19 @@
 			<0x07706010 0x4>;
 		reg-names = "avtimer_lsb_addr", "avtimer_msb_addr";
 		qcom,clk_div = <27>;
+	};
+
+	mcd {
+		compatible = "qcom,mcd";
+		qcom,ce-hw-instance = <0>;
+		qcom,ce-device = <0>;
+		clocks = <&clock_gcc clk_crypto_clk_src>,
+			 <&clock_gcc clk_gcc_crypto_clk>,
+			 <&clock_gcc clk_gcc_crypto_ahb_clk>,
+			 <&clock_gcc clk_gcc_crypto_axi_clk>;
+		clock-names = "core_clk_src", "core_clk",
+				"iface_clk", "bus_clk";
+		qcom,ce-opp-freq = <100000000>;
 	};
 };
 
