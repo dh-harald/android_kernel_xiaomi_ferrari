@@ -63,6 +63,6 @@
 
 &cci {
 	qcom,camera@0 {
-		qcom,led-flash-src = <&led_flash1>;
+		qcom,led-flash-src = <&led_flash0>;
 	};
 };
