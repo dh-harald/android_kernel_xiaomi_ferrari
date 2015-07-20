@@ -165,8 +165,6 @@ static const hdd_freq_chan_map_t freq_chan_map[] = { {2412, 1}, {2417, 2},
 #define WE_SET_TDLS_OFF_CHAN_MODE        16
 #endif
 #define  WE_SET_SCAN_BAND_PREFERENCE     17
-#define  WE_SET_MIRACAST_VENDOR_CONFIG     18
-
 
 /* Private ioctls and their sub-ioctls */
 #define WLAN_PRIV_SET_NONE_GET_INT    (SIOCIWFIRSTPRIV + 1)
@@ -1216,7 +1214,7 @@ void hdd_clearRoamProfileIe( hdd_adapter_t *pAdapter)
    pWextState->roamProfile.bWPSAssociation = VOS_FALSE;
    pWextState->roamProfile.bOSENAssociation = VOS_FALSE;
    pWextState->roamProfile.nAddIEScanLength = 0;
-   memset(pWextState->roamProfile.addIEScan, 0 , SIR_MAC_MAX_ADD_IE_LENGTH+2);
+   memset(pWextState->roamProfile.addIEScan, 0 , SIR_MAC_MAX_IE_LENGTH+2);
    pWextState->roamProfile.pAddIEAssoc = (tANI_U8 *)NULL;
    pWextState->roamProfile.nAddIEAssocLength = 0;
 
@@ -4823,36 +4821,7 @@ static int __iw_setint_getnone(struct net_device *dev,
             }
             break;
         }
-        /* The WE_SET_MIRACAST_VENDOR_CONFIG IOCTL should be set before the
-         * connection happens so that the params can take effect during
-         * association. Also this should not be used in STA+p2p concurrency
-         * as the param will also effect the STA mode.
-         */
-        case WE_SET_MIRACAST_VENDOR_CONFIG:
-        {
-            hdd_context_t *pHddCtx = WLAN_HDD_GET_CTX(pAdapter);
 
-            hddLog(LOG1, FL(
-             "Set Miracast vendor tuning %d"), set_value);
-
-            if (1 == set_value || 0 == set_value)
-            {
-                if (eHAL_STATUS_SUCCESS != sme_SetMiracastVendorConfig(pHddCtx->hHal,
-                                  pHddCtx->cfg_ini->numBuffAdvert, set_value))
-                {
-                    hddLog( LOGE, FL("set vendor miracast config failed"));
-                    ret = -EIO;
-                }
-            }
-            else
-            {
-                hddLog(LOGE,
-                 FL("Invalid value %d in WE_SET_MIRACAST_VENDOR_CONFIG IOCTL"), set_value);
-                ret = -EINVAL;
-            }
-
-            break;
-        }
         default:
         {
             hddLog(LOGE, "Invalid IOCTL setvalue command %d value %d",
@@ -7988,20 +7957,13 @@ int hdd_setBand(struct net_device *dev, u8 ui_band)
     }
 
     if ( (band == eCSR_BAND_24 && pHddCtx->cfg_ini->nBandCapability==2) ||
-         (band == eCSR_BAND_5G && pHddCtx->cfg_ini->nBandCapability==1) )
+         (band == eCSR_BAND_5G && pHddCtx->cfg_ini->nBandCapability==1) ||
+         (band == eCSR_BAND_ALL && pHddCtx->cfg_ini->nBandCapability!=0))
     {
          VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
              "%s: band value %u violate INI settings %u", __func__,
              band, pHddCtx->cfg_ini->nBandCapability);
          return -EIO;
-    }
-
-    if (band == eCSR_BAND_ALL)
-    {
-        VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO, FL("Auto Band "
-                            "received. Setting band same as ini value %d"),
-                                        pHddCtx->cfg_ini->nBandCapability);
-        band = pHddCtx->cfg_ini->nBandCapability;
     }
 
     if (eHAL_STATUS_SUCCESS != sme_GetFreqBand(hHal, &currBand))
@@ -8711,10 +8673,6 @@ static const struct iw_priv_args we_private_args[] = {
     {   WE_SET_SCAN_BAND_PREFERENCE,
         IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
         0, "set_scan_pref" },
-
-    {   WE_SET_MIRACAST_VENDOR_CONFIG,
-        IW_PRIV_TYPE_INT | IW_PRIV_SIZE_FIXED | 1,
-        0, "setMiracstConf" },
 
     /* handlers for main ioctl */
     {   WLAN_PRIV_SET_NONE_GET_INT,

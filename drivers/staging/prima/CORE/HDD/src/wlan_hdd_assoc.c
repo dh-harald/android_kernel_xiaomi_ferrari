@@ -928,70 +928,39 @@ static eHalStatus hdd_DisConnectHandler( hdd_adapter_t *pAdapter, tCsrRoamInfo *
 
     if (eCSR_ROAM_IBSS_LEAVE == roamStatus)
     {
-        v_U8_t i;
-
         sta_id = IBSS_BROADCAST_STAID;
         vstatus = hdd_roamDeregisterSTA( pAdapter, sta_id );
         if ( !VOS_IS_STATUS_SUCCESS(vstatus ) )
         {
             VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
-                    FL("hdd_roamDeregisterSTA() failed to for staID %d.  "
-                     "Status= %d [0x%x]"),
+                     "hdd_roamDeregisterSTA() failed to for staID %d.  "
+                     "Status= %d [0x%x]",
                      sta_id, status, status );
 
             status = eHAL_STATUS_FAILURE;
         }
+
         pHddCtx->sta_to_adapter[sta_id] = NULL;
 
-        /*Clear all the peer sta register with TL.*/
-        for (i =0; i < HDD_MAX_NUM_IBSS_STA; i++ )
-        {
-            if (0 != pHddStaCtx->conn_info.staId[i])
-            {
-               sta_id = pHddStaCtx->conn_info.staId[i];
-
-               VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
-                     FL("Deregister StaID %d"),sta_id);
-               vstatus = hdd_roamDeregisterSTA( pAdapter, sta_id );
-               if ( !VOS_IS_STATUS_SUCCESS(vstatus ) )
-               {
-                   VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
-                     FL("hdd_roamDeregisterSTA() failed to for staID %d.  "
-                      "Status= %d [0x%x]"),
-                       sta_id, status, status );
-                   status = eHAL_STATUS_FAILURE;
-               }
-
-               /*set the staid and peer mac as 0, all other reset are
-                * done in hdd_connRemoveConnectInfo.
-                */
-               pHddStaCtx->conn_info.staId[i]= 0;
-               vos_mem_zero( &pHddStaCtx->conn_info.peerMacAddress[i], sizeof( v_MACADDR_t ) );
-
-               if (sta_id < (WLAN_MAX_STA_COUNT + 3))
-                    pHddCtx->sta_to_adapter[sta_id] = NULL;
-            }
-        }
-
     }
-    else
-    {
-       sta_id = pHddStaCtx->conn_info.staId[0];
 
-       //We should clear all sta register with TL, for now, only one.
-       vstatus = hdd_roamDeregisterSTA( pAdapter, sta_id );
-       if ( !VOS_IS_STATUS_SUCCESS(vstatus ) )
-       {
-           VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
-                  FL("hdd_roamDeregisterSTA() failed to for staID %d.  "
-                  "Status= %d [0x%x]"),
+
+    sta_id = pHddStaCtx->conn_info.staId[0];
+
+    //We should clear all sta register with TL, for now, only one.
+    vstatus = hdd_roamDeregisterSTA( pAdapter, sta_id );
+    if ( !VOS_IS_STATUS_SUCCESS(vstatus ) )
+    {
+        VOS_TRACE(VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_ERROR,
+                  "hdd_roamDeregisterSTA() failed to for staID %d.  "
+                  "Status= %d [0x%x]",
                   sta_id, status, status );
 
-           status = eHAL_STATUS_FAILURE;
-       }
-
-       pHddCtx->sta_to_adapter[sta_id] = NULL;
+        status = eHAL_STATUS_FAILURE;
     }
+
+    pHddCtx->sta_to_adapter[sta_id] = NULL;
+
     // Clear saved connection information in HDD
     hdd_connRemoveConnectInfo( pHddStaCtx );
     VOS_TRACE( VOS_MODULE_ID_HDD, VOS_TRACE_LEVEL_INFO,
@@ -1757,23 +1726,12 @@ static eHalStatus hdd_AssociationCompletionHandler( hdd_adapter_t *pAdapter, tCs
             }
             else
             {
-                if (pRoamInfo){
-                    eCsrAuthType authType =
-                        pWextState->roamProfile.AuthType.authType[0];
-                    v_BOOL_t isWep = (authType == eCSR_AUTH_TYPE_OPEN_SYSTEM) ||
-                                     (authType == eCSR_AUTH_TYPE_SHARED_KEY);
-
-                     /* In case of OPEN-WEP or SHARED-WEP authentication,
-                     * send exact protocol reason code. This enables user
-                     * applications to reconnect the station with correct
-                     * configuration.
-                     */
+                if (pRoamInfo)
                     cfg80211_connect_result ( dev, pRoamInfo->bssid,
                         NULL, 0, NULL, 0,
-                        isWep ? pRoamInfo->reasonCode :
                         WLAN_STATUS_UNSPECIFIED_FAILURE,
                         GFP_KERNEL );
-              } else
+                else
                     cfg80211_connect_result ( dev, pWextState->req_bssId,
                         NULL, 0, NULL, 0,
                         WLAN_STATUS_UNSPECIFIED_FAILURE,
