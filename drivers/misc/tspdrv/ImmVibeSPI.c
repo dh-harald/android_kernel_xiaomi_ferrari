@@ -292,6 +292,30 @@ chip_dwn:
 	gpio_set_value_cansleep(GPIO_HAPTIC_PWR_EN, 0);
 }
 
+static ssize_t vibrator_amp_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%d\n", pwm_duty);
+}
+
+static ssize_t vibrator_amp_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+    int gain;
+	sscanf(buf, "%d", &gain);
+
+    if(gain>100)
+        gain=100;
+    else if(gain<80)
+        gain=80;
+
+    pwm_duty = gain;
+
+	return size;
+}
+
+static DEVICE_ATTR(amp, S_IRUGO | S_IWUSR, vibrator_amp_show, vibrator_amp_store);
+
 static int isa1000_setup(void)
 {
 	int ret;
@@ -418,6 +442,11 @@ VibeStatus ImmVibeSPI_ForceOut_Initialize(void)
 		return VIBE_E_FAIL;
 	}
 	/**/
+	
+     	Ret = device_create_file(vib_dev->timed_dev.dev, &dev_attr_amp);
+    	if (Ret < 0) {
+		pr_err("[VIB] %s, create sysfs fail: amp\n", __func__);
+    	}
 
 	/* Disable amp */
 	ImmVibeSPI_ForceOut_AmpDisable(0);
