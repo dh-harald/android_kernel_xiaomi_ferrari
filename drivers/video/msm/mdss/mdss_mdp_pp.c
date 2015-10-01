@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  * Copyright (C) 2015 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -457,7 +457,7 @@ inline int linear_map(int in, int *out, int in_max, int out_max)
 {
 	if (in < 0 || !out || in_max <= 0 || out_max <= 0)
 		return -EINVAL;
-	*out = (((in * out_max)) / (in_max));
+	*out = ((2 * (in * out_max) + in_max) / (2 * in_max));
 	pr_debug("in = %d, out = %d, in_max = %d, out_max = %d\n",
 		in, *out, in_max, out_max);
 	if ((in > 0) && (*out == 0))
@@ -1067,8 +1067,8 @@ static int mdss_mdp_scale_setup(struct mdss_mdp_pipe *pipe)
 		}
 	}
 
-	src_w = pipe->src.w >> pipe->horz_deci;
-	src_h = pipe->src.h >> pipe->vert_deci;
+	src_w = DECIMATED_DIMENSION(pipe->src.w, pipe->horz_deci);
+	src_h = DECIMATED_DIMENSION(pipe->src.h, pipe->vert_deci);
 
 	chroma_sample = pipe->src_fmt->chroma_sample;
 	if (pipe->flags & MDP_SOURCE_ROTATED_90) {
@@ -2178,6 +2178,8 @@ static int pp_ad_calc_bl(struct msm_fb_data_type *mfd, int bl_in, int *bl_out,
 	}
 
 	mutex_lock(&ad->lock);
+	if (!mfd->ad_bl_level)
+		mfd->ad_bl_level = bl_in;
 	if (!(ad->state & PP_AD_STATE_RUN)) {
 		pr_debug("AD is not running.\n");
 		mutex_unlock(&ad->lock);
@@ -3021,17 +3023,11 @@ int mdss_mdp_argc_config(struct mdp_pgc_lut_data *config,
 		argc_addr = mdss_mdp_get_mixer_addr_off(dspp_num) +
 			MDSS_MDP_REG_LM_GC_LUT_BASE;
 		pgc_ptr = &mdss_pp_res->argc_disp_cfg[disp_num];
-		if (!(config->flags & MDP_PP_OPS_READ))
-			mdss_pp_res->pp_disp_flags[disp_num] |=
-				PP_FLAGS_DIRTY_ARGC;
 		break;
 	case MDSS_PP_DSPP_CFG:
 		argc_addr = mdss_mdp_get_dspp_addr_off(dspp_num) +
 					MDSS_MDP_REG_DSPP_GC_BASE;
 		pgc_ptr = &mdss_pp_res->pgc_disp_cfg[disp_num];
-		if (!(config->flags & MDP_PP_OPS_READ))
-			mdss_pp_res->pp_disp_flags[disp_num] |=
-				PP_FLAGS_DIRTY_PGC;
 		break;
 	default:
 		goto argc_config_exit;
@@ -3114,6 +3110,12 @@ int mdss_mdp_argc_config(struct mdp_pgc_lut_data *config,
 			&mdss_pp_res->gc_lut_g[disp_num][0];
 		pgc_ptr->b_data =
 			&mdss_pp_res->gc_lut_b[disp_num][0];
+		if (PP_LOCAT(config->block) == MDSS_PP_LM_CFG)
+			mdss_pp_res->pp_disp_flags[disp_num] |=
+				PP_FLAGS_DIRTY_ARGC;
+		else if (PP_LOCAT(config->block) == MDSS_PP_DSPP_CFG)
+			mdss_pp_res->pp_disp_flags[disp_num] |=
+				PP_FLAGS_DIRTY_PGC;
 	}
 argc_config_exit:
 	mutex_unlock(&mdss_pp_mutex);
@@ -4603,6 +4605,7 @@ int mdss_mdp_ad_input(struct msm_fb_data_type *mfd,
 			mdss_fb_set_backlight(mfd, bl);
 			mutex_unlock(&mfd->bl_lock);
 			mutex_lock(&ad->lock);
+			mfd->calib_mode_bl = bl;
 		} else {
 			pr_warn("should be in calib mode\n");
 		}
@@ -5587,6 +5590,9 @@ int mdss_mdp_calib_mode(struct msm_fb_data_type *mfd,
 		return -EINVAL;
 	mutex_lock(&mdss_pp_mutex);
 	mfd->calib_mode = cfg->calib_mask;
+	mutex_lock(&mfd->bl_lock);
+	mfd->calib_mode_bl = mfd->bl_level;
+	mutex_unlock(&mfd->bl_lock);
 	mutex_unlock(&mdss_pp_mutex);
 	return 0;
 }

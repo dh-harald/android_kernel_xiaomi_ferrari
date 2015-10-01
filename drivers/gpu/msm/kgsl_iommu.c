@@ -800,6 +800,8 @@ static int kgsl_attach_pagetable_iommu_domain(struct kgsl_mmu *mmu)
 					iommu_unit->clks[2] = drvdata->aclk;
 					iommu_unit->clks[3] =
 							iommu->gtcu_iface_clk;
+					iommu_unit->clks[4] =
+							iommu->gtbu_clk;
 				}
 			}
 		}
@@ -1311,6 +1313,7 @@ static int kgsl_iommu_init(struct kgsl_mmu *mmu)
 	int status = 0;
 	struct kgsl_iommu *iommu;
 	struct platform_device *pdev = mmu->device->pdev;
+	struct adreno_device *adreno_dev = ADRENO_DEVICE(mmu->device);
 	size_t secured_pool_sz = 0;
 
 	atomic_set(&mmu->fault, 0);
@@ -1333,6 +1336,13 @@ static int kgsl_iommu_init(struct kgsl_mmu *mmu)
 		of_property_match_string(pdev->dev.of_node, "clock-names",
 						"gtcu_iface_clk") >= 0)
 		iommu->gtcu_iface_clk = clk_get(&pdev->dev, "gtcu_iface_clk");
+
+	/* TBU clk needs to be voted for TLB invalidate on A405 */
+	if (adreno_is_a405(adreno_dev)) {
+		iommu->gtbu_clk = clk_get(&pdev->dev, "gtbu_clk");
+		if (IS_ERR(iommu->gtbu_clk))
+			iommu->gtbu_clk = NULL;
+	}
 
 	mmu->pt_base = KGSL_MMU_MAPPED_MEM_BASE;
 	mmu->pt_size = (KGSL_MMU_MAPPED_MEM_SIZE - secured_pool_sz);
@@ -1909,7 +1919,7 @@ static int kgsl_iommu_flush_pt(struct kgsl_mmu *mmu)
 
 	/* For v0 SMMU GPU needs to be idle for tlb invalidate as well */
 	if (msm_soc_version_supports_iommu_v0()) {
-		ret = kgsl_idle(mmu->device);
+		ret = adreno_spin_idle(mmu->device);
 		if (ret)
 			return ret;
 	}
@@ -1981,7 +1991,11 @@ static int kgsl_iommu_set_pt(struct kgsl_mmu *mmu,
 
 	pt_base = kgsl_iommu_get_pt_base_addr(mmu, pt);
 
-	ret = kgsl_idle(mmu->device);
+	/*
+	 * Taking the liberty to spin idle since this codepath
+	 * is invoked when we can spin safely for it to be idle
+	 */
+	ret = adreno_spin_idle(mmu->device);
 	if (ret)
 		return ret;
 

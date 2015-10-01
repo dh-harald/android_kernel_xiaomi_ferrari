@@ -3093,6 +3093,9 @@ fail_profile:
 	return rc;
 }
 
+#define UPDATE_IRQ_STAT(irq_reg, value) \
+		handlers[irq_reg - IRQ_A_REG].prev_val = value;
+
 static int determine_initial_status(struct smb1360_chip *chip)
 {
 	int rc;
@@ -3108,6 +3111,8 @@ static int determine_initial_status(struct smb1360_chip *chip)
 		dev_err(chip->dev, "Couldn't read IRQ_B_REG rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_B_REG, reg);
+
 	if (reg & IRQ_B_BATT_TERMINAL_BIT || reg & IRQ_B_BATT_MISSING_BIT)
 		chip->batt_present = false;
 
@@ -3116,6 +3121,8 @@ static int determine_initial_status(struct smb1360_chip *chip)
 		dev_err(chip->dev, "Couldn't read IRQ_C_REG rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_C_REG, reg);
+
 	if (reg & IRQ_C_CHG_TERM)
 		chip->batt_full = true;
 
@@ -3124,6 +3131,7 @@ static int determine_initial_status(struct smb1360_chip *chip)
 		dev_err(chip->dev, "Couldn't read irq A rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_A_REG, reg);
 
 	if (chip->workaround_flags & WRKRND_HARD_JEITA) {
 		schedule_delayed_work(&chip->jeita_work, 0);
@@ -3145,6 +3153,8 @@ static int determine_initial_status(struct smb1360_chip *chip)
 		dev_err(chip->dev, "Couldn't read irq E rc = %d\n", rc);
 		return rc;
 	}
+	UPDATE_IRQ_STAT(IRQ_E_REG, reg);
+
 	chip->usb_present = (reg & IRQ_E_USBIN_UV_BIT) ? false : true;
 	power_supply_set_present(chip->usb_psy, chip->usb_present);
 
@@ -3221,7 +3231,7 @@ disable_fg_reset:
 	 */
 	if (!(chip->workaround_flags & WRKRND_FG_CONFIG_FAIL)) {
 		if (chip->delta_soc != -EINVAL) {
-			//reg = DIV_ROUND_UP(chip->delta_soc * MAX_8_BITS, 100);
+			//reg = abs(((chip->delta_soc * MAX_8_BITS) / 100) - 1);
 			reg = chip->delta_soc;
 			pr_debug("delta_soc=%d reg=%x\n", chip->delta_soc, reg);
 			rc = smb1360_write(chip, SOC_DELTA_REG, reg);
@@ -3877,9 +3887,8 @@ static int smb1360_hw_init(struct smb1360_chip *chip)
 
 	/* batt-id configuration */
 	if (chip->batt_id_disabled) {
-		mask = BATT_ID_ENABLED_BIT | CHG_BATT_ID_FAIL
-				| BATT_ID_FAIL_SELECT_PROFILE;
-		reg = CHG_BATT_ID_FAIL | BATT_ID_FAIL_SELECT_PROFILE;
+		mask = BATT_ID_ENABLED_BIT | CHG_BATT_ID_FAIL;
+		reg = CHG_BATT_ID_FAIL;
 		rc = smb1360_masked_write(chip, CFG_FG_BATT_CTRL_REG,
 						mask, reg);
 		if (rc < 0) {

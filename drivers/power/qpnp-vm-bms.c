@@ -290,7 +290,6 @@ static void disable_bms_irq(struct bms_irq *irq)
 	}
 }
 
-
 static void enable_bms_irq(struct bms_irq *irq)
 {
 	if (__test_and_clear_bit(0, &irq->disabled)) {
